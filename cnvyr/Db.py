@@ -36,7 +36,7 @@ class Db:
 
         for f in dataclasses.fields(c):
             f_name = f.name.lower()
-            if f_name == "_id":
+            if f_name == "id":
                 fields.append(f"{f_name} bigserial not null")
             else:
 
@@ -80,7 +80,7 @@ class Db:
         self.create_table(item)
         query = f"insert into {self.table_name(item)}"
         fields = dataclasses.asdict(item)
-        del fields["_id"]
+        del fields["id"]
         query += "(" + ", ".join(fields) + ") values (" + ", ".join(f"%({k})s" for k in fields) + ")"
         with self.connection.cursor() as cursor:
             cursor.execute(query, fields)
