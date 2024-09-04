@@ -12,6 +12,7 @@ from ..Item import Item
 @pytest.fixture
 def db():
     result = Db(**json.loads(pathlib.Path("credentials.json").read_text()))
+    result.wipe()
     yield result
     result.wipe()
 
