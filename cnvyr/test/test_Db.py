@@ -21,15 +21,37 @@ def db():
 class C(Item):
     test_bool: bool = True
     test_string: str = "lalala"
-    test_int: int = 1234
-    test_float: float = 1234.1234
+    test_int: int = 123
+    test_float: float = 123.123
     test_bytes: bytes = b"lalala"
     test_datetime: datetime.datetime = datetime.datetime.now()
 
 
 def test_save_load(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
-    db.save(c)
+    db.create(c)
     result = [*db.load("select * from c", C)]
     assert len(result) == 1
     assert result[0] == c
+
+
+def test_update(db: Db):
+    c = C(digest=b"digest", created=datetime.datetime.now())
+    db.create(c)
+    created = [*db.load("select * from c", C)][0]
+
+    updated = dataclasses.replace(
+        created,
+        test_bool=False,
+        test_string="lololo",
+        test_int=321,
+        test_float=321.321,
+        test_bytes=b"lololo",
+        test_datetime=datetime.datetime.now(),
+    )
+    db.update(created, updated)
+
+    result = [*db.load("select * from c", C)]
+    assert len(result) == 1
+    assert result[0] != created
+    assert result[0] == updated

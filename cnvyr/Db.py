@@ -4,6 +4,7 @@ import typing
 
 import psycopg
 import psycopg.rows
+import psycopg.sql
 
 from .Item import Item
 
@@ -50,7 +51,7 @@ class Db:
                 elif f.type | int == f.type:
                     field.append("bigint")
                 elif f.type | float == f.type:
-                    field.append("real")
+                    field.append("double precision")
                 elif f.type | bytes == f.type:
                     field.append("bytea")
                 elif f.type | datetime.datetime == f.type:
@@ -76,14 +77,38 @@ class Db:
             cursor.execute("grant all on schema public to postgres")
             cursor.execute("grant all on schema public to public")
 
-    def save(self, item: Item):
+    def create(self, item: Item):
         self.create_table(item)
         query = f"insert into {self.table_name(item)}"
         fields = dataclasses.asdict(item)
         del fields["id"]
         query += "(" + ", ".join(fields) + ") values (" + ", ".join(f"%({k})s" for k in fields) + ")"
-        with self.connection.cursor() as cursor:
-            cursor.execute(query, fields)
+        self.connection.execute(query, fields)
+
+    def update(self, old: Item, new: Item):
+        t_name = self.table_name(old)
+        if t_name != (t_name_new := self.table_name(new)):
+            raise ValueError(f"old item table name {t_name} != {t_name_new}")
+        if old.id != new.id:
+            raise ValueError(f"old item id {old.id} != {new.id}")
+
+        query = f"update {t_name} set "
+        d_old = dataclasses.asdict(old)
+        d_new = dataclasses.asdict(new)
+
+        diff = dict(list(set(d_new.items()) - set(d_old.items())))
+        if not diff:
+            return
+        for k, v in diff.items():
+            if k in Item.__dataclass_fields__:
+                raise ValueError(f"attempt to change constant field: ({k}, {v})")
+        query += ", ".join(f"{k}=%({k})s" for k in diff)
+
+        del d_old["id"]
+        where_old = {f"_old_{k}": v for k, v in d_old.items()}
+        query += " where " + " and ".join(f"{k}=%(_old_{k})s" for k in list(d_old.keys()))
+
+        self.connection.execute(query, diff | where_old)
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.class_row(t)) as cursor:
