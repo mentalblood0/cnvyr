@@ -103,7 +103,7 @@ class Db:
         d_old = self.asdict(old)
         d_new = self.asdict(new)
 
-        diff = dict(list(set(d_new.items()) - set(d_old.items())))
+        diff = dict(set(d_new.items()) - set(d_old.items()))
         if not diff:
             return
         for k, v in diff.items():
@@ -113,7 +113,7 @@ class Db:
 
         del d_old["id"]
         where_old = {f"_old_{k}": v for k, v in d_old.items()}
-        query += " where " + " and ".join(f"{k}=%(_old_{k})s" for k in list(d_old.keys()))
+        query += " where " + " and ".join(f"{k}=%(_old_{k})s" for k in d_old.keys())
 
         self.connection.execute(query, diff | where_old)
 
