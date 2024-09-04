@@ -3,6 +3,7 @@ import dataclasses
 import datetime
 import hashlib
 import pathlib
+import zlib
 
 from .Item import Item
 
@@ -13,6 +14,12 @@ class Files:
 
     def digest(self, data):
         return hashlib.sha512(data).digest()
+
+    def compressed(self, data):
+        return zlib.compress(data, level=zlib.Z_BEST_COMPRESSION)
+
+    def decompressed(self, data):
+        return zlib.decompress(data)
 
     def path(self, created: datetime.datetime, digest: bytes):
         return (
@@ -29,12 +36,12 @@ class Files:
         digest = self.digest(data)
         path = self.path(created, digest)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
+        path.write_bytes(self.compressed(data))
         return created, digest
 
     def load(self, created: datetime.datetime, digest: bytes):
         path = self.path(created, digest)
-        result = path.read_bytes()
+        result = self.decompressed(path.read_bytes())
         if (have := self.digest(result)) != digest:
             raise ValueError(f"for file created at {created}: have {have}, got {digest}")
         return result
