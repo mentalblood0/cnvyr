@@ -1,5 +1,6 @@
 import dataclasses
 import datetime
+import enum
 import json
 import pathlib
 
@@ -17,6 +18,9 @@ def db():
     result.wipe()
 
 
+E = enum.Enum("E", ["A", "B"])
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class C(Item):
     test_bool: bool = True
@@ -25,6 +29,7 @@ class C(Item):
     test_float: float = 123.123
     test_bytes: bytes = b"lalala"
     test_datetime: datetime.datetime = datetime.datetime.now()
+    test_enum: E = E.A
 
 
 def test_save_load(db: Db):
@@ -48,6 +53,7 @@ def test_update(db: Db):
         test_float=321.321,
         test_bytes=b"lololo",
         test_datetime=datetime.datetime.now(),
+        test_enum=E.B,
     )
     db.update(created, updated)
 
