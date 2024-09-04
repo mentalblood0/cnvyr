@@ -38,12 +38,6 @@ class Db:
             f_name = f.name.lower()
             if f_name == "_id":
                 fields.append(f"{f_name} bigserial not null")
-            elif f_name == "digest":
-                fields.append(f"{f_name} bytea not null")
-                ci_queries.append(f"create index if not exists {t_name}_{f_name} on {t_name}({f_name})")
-            elif f_name == "created":
-                fields.append(f"{f_name} timestamp not null")
-                ci_queries.append(f"create index if not exists {t_name}_{f_name} on {t_name}({f_name})")
             else:
 
                 ci_queries.append(f"create index if not exists {t_name}_{f_name} on {t_name}({f_name})")
