@@ -111,11 +111,10 @@ class Db:
                 raise ValueError(f"attempt to change constant field: ({k}, {v})")
         query += ", ".join(f"{k}=%({k})s" for k in diff)
 
-        del d_old["id"]
-        where_old = {f"_old_{k}": v for k, v in d_old.items()}
-        query += " where " + " and ".join(f"{k}=%(_old_{k})s" for k in d_old.keys())
+        rdiff = dict(set(d_old.items()) - set(d_new.items()))
+        query += " where " + " and ".join(f"{k}=%(_{k})s" for k in rdiff.keys())
 
-        self.connection.execute(query, diff | where_old)
+        self.connection.execute(query, diff | {f"_{k}": v for k, v in rdiff.items()})
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.class_row(t)) as cursor:
