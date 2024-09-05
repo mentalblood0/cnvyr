@@ -58,7 +58,7 @@ class Db:
                     field.append("bytea")
                 elif f.type | datetime.datetime == f.type:
                     field.append("timestamp")
-                elif issubclass(f.type, enum.Enum):
+                elif isinstance(f.type, type) and issubclass(f.type, enum.Enum):
                     field.append("smallint")
                 else:
                     raise ValueError(f.type)
