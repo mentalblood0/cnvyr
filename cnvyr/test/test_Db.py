@@ -34,7 +34,7 @@ class C(Item):
 
 def test_save_load(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
-    db.transaction(c)
+    db.transaction("test_save_load:save", c)
     result = [*db.load("select * from c", C)]
     assert len(result) == 1
     assert result[0] == c
@@ -42,7 +42,7 @@ def test_save_load(db: Db):
 
 def test_update(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
-    db.transaction(c)
+    db.transaction("test_update:save", c)
     created = [*db.load("select * from c", C)][0]
 
     updated = dataclasses.replace(
@@ -55,7 +55,7 @@ def test_update(db: Db):
         test_datetime=datetime.datetime.now(),
         test_enum=E.B,
     )
-    db.transaction((created, updated))
+    db.transaction("test_update:update", (created, updated))
 
     result = [*db.load("select * from c", C)]
     assert len(result) == 1
