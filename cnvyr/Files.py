@@ -28,7 +28,7 @@ class Files:
             / str(created.month)
             / str(created.day)
             / str(created.hour)
-            / (f"{created.minute}:{created.second}:" + base64.b64encode(digest.rstrip(b"=")).decode("ascii"))
+            / (f"{created.minute}_{created.second}_" + base64.b64encode(digest.rstrip(b"=")).decode("ascii"))
         )
 
     def save(self, data: bytes):
