@@ -8,9 +8,14 @@ import zlib
 from .Item import Item
 
 
-@dataclasses.dataclass(frozen=True, kw_only=False)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class Files:
     root: pathlib.Path
+    extension: str
+
+    def __post_init__(self):
+        if not self.extension.startswith("."):
+            raise ValueError(self.extension)
 
     def digest(self, data):
         return hashlib.sha512(data).digest()
@@ -29,7 +34,7 @@ class Files:
             / f"{created.day:02}"
             / f"{created.hour:02}"
             / (f"{created.minute:02}_{created.second:02}_" + base64.b64encode(digest.rstrip(b"=")).decode("ascii"))
-        )
+        ).with_suffix(self.extension + ".gz")
 
     def save(self, data: bytes):
         created = datetime.datetime.now(datetime.UTC)

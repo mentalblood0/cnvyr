@@ -10,7 +10,7 @@ from ..Files import Files
 def files():
     path = pathlib.Path("test_files")
     shutil.rmtree(path, ignore_errors=True)
-    yield Files(path)
+    yield Files(root=path, extension=".txt")
     shutil.rmtree(path, ignore_errors=True)
 
 
