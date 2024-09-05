@@ -161,7 +161,11 @@ class Db:
         self._create_log_table()
         cursor.executemany(
             "insert into cnvyr_log(item_id, operation, key, value) values(%s, %s, %s, %s)",
-            [(new.id, operation, k, str(v)) for k, v in self.diff(old, new).items()],
+            [
+                (new.id, operation, k, str(v))
+                for k, v in self.diff(old, new).items()
+                if not ((old is None) and (v is None))
+            ],
         )
 
     def transaction(self, operation: str, *actions: Item | tuple[Item, Item]):
