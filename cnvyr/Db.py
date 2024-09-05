@@ -191,7 +191,9 @@ class Db:
                     (operation, e.__class__.__name__, str(e)),
                 )
             except Exception as db_e:
-                logging.error(f"{db_e.__class__.__name__}: {db_e}")
+                logging.error(
+                    f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
+                )
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
