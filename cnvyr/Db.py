@@ -185,7 +185,7 @@ class Db:
         except Exception as e:
             self.connection.execute(
                 "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
-                "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=excluded.amount+1",
+                "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
                 (operation, e.__class__.__name__, str(e)),
             )
             raise e
