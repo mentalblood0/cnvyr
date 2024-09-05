@@ -126,14 +126,9 @@ class Db:
                     raise ValueError(a)
 
     def load(self, query: str, t: type[Item]):
-        with self.connection.cursor(row_factory=psycopg.rows.class_row(t)) as cursor:
-            for r in cursor.execute(query):
-                enum_updates = {}
-                for f in dataclasses.fields(r):
-                    if (
-                        isinstance(f.type, type)
-                        and issubclass(f.type, enum.Enum)
-                        and isinstance((v := getattr(r, f.name)), int)
-                    ):
-                        enum_updates[f.name] = f.type(v)
-                yield dataclasses.replace(r, **enum_updates)
+        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+            for d in cursor.execute(query):
+                for f in dataclasses.fields(t):
+                    if isinstance(f.type, type) and issubclass(f.type, enum.Enum) and isinstance((v := d[f.name]), int):
+                        d[f.name] = f.type(v)
+                yield t(**d)
