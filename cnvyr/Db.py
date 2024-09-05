@@ -31,7 +31,7 @@ class Db:
     def table_name(self, item: Item):
         return type(item).__name__.lower()
 
-    def create_table(self, c: Item):
+    def _create_table(self, c: Item, cursor: psycopg.Cursor):
         t_name = self.table_name(c)
         ct_query = f"create table if not exists {t_name}"
         fields = []
@@ -70,9 +70,8 @@ class Db:
 
         ct_query += f"({', '.join(fields)})"
 
-        with self.connection.cursor() as cursor:
-            for q in [ct_query] + ci_queries:
-                cursor.execute(q)
+        for q in [ct_query] + ci_queries:
+            cursor.execute(q)
 
     def wipe(self):
         with self.connection.cursor() as cursor:
@@ -82,7 +81,7 @@ class Db:
             cursor.execute("grant all on schema public to public")
 
     def _create(self, item: Item, cursor: psycopg.Cursor):
-        self.create_table(item)
+        self._create_table(item, cursor)
         query = f"insert into {self.table_name(item)}"
         fields = self.asdict(item)
         del fields["id"]
