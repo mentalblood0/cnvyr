@@ -183,8 +183,8 @@ class Db:
 
     @contextlib.contextmanager
     def error_logging(self, operation: str):
-        self._create_errors_table()
         try:
+            self._create_errors_table()
             yield
             self.connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
         except Exception as e:
