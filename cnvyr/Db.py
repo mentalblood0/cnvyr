@@ -81,18 +81,18 @@ class Db:
             cursor.execute("grant all on schema public to postgres")
             cursor.execute("grant all on schema public to public")
 
-    def create(self, item: Item):
+    def _create(self, item: Item, cursor: psycopg.Cursor):
         self.create_table(item)
         query = f"insert into {self.table_name(item)}"
         fields = self.asdict(item)
         del fields["id"]
         query += "(" + ", ".join(fields) + ") values (" + ", ".join(f"%({k})s" for k in fields) + ")"
-        self.connection.execute(query, fields)
+        cursor.execute(query, fields)
 
     def asdict(self, item: Item):
         return {k: v.value if isinstance(v, enum.Enum) else v for k, v in dataclasses.asdict(item).items()}
 
-    def update(self, old: Item, new: Item):
+    def _update(self, old: Item, new: Item, cursor: psycopg.Cursor):
         t_name = self.table_name(old)
         if t_name != (t_name_new := self.table_name(new)):
             raise ValueError(f"old item table name {t_name} != {t_name_new}")
@@ -114,7 +114,17 @@ class Db:
         rdiff = dict(set(d_old.items()) - set(d_new.items()))
         query += " where " + " and ".join(f"{k}=%(_{k})s" for k in rdiff.keys())
 
-        self.connection.execute(query, diff | {f"_{k}": v for k, v in rdiff.items()})
+        cursor.execute(query, diff | {f"_{k}": v for k, v in rdiff.items()})
+
+    def transaction(self, *actions: Item | tuple[Item, Item]):
+        with self.connection.cursor() as cursor:
+            for a in actions:
+                if isinstance(a, Item):
+                    self._create(a, cursor)
+                elif isinstance(a, tuple) and len(a) == 2 and isinstance(a[0], Item) and isinstance(a[1], Item):
+                    self._update(*a, cursor)
+                else:
+                    raise ValueError(a)
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.class_row(t)) as cursor:
