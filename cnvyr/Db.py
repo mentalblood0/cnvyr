@@ -29,6 +29,11 @@ class Db:
                 "item_id bigint not null, operation text not null, "
                 "key text not null, value text not null)"
             )
+            cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
+            cursor.execute("create index if not exists cnvyr_log_item_id on cnvyr_log(item_id)")
+            cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
+            cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
+            cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
 
     @property
     def new_connection(self):
