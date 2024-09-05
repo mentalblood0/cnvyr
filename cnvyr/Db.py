@@ -155,7 +155,11 @@ class Db:
         rdiff = self.diff(new, old)
         query += " where " + " and ".join(f"{k}=%(_{k})s" for k in rdiff.keys())
 
-        cursor.execute(query, diff | {f"_{k}": v for k, v in rdiff.items()})
+        if (
+            not (result := cursor.execute(query, diff | {f"_{k}": v for k, v in rdiff.items()}).pgresult)
+            or not result.status
+        ):
+            raise ValueError(f"update resulted in {result}")
 
     def _log(self, operation: str, old: Item | None, new: Item, cursor: psycopg.Cursor):
         self._create_log_table()
