@@ -69,13 +69,11 @@ def test_error_logging(db: Db):
     error_type = "ValueError"
 
     for i in range(3):
-        with pytest.raises(ValueError):
-            with db.error_logging(operation):
-                raise ValueError(error_text)
+        with db.error_logging(operation):
+            raise ValueError(error_text)
         result = db.connection.execute(
             "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
         ).fetchall()
-        print(result)
         assert len(result) == 1
         assert result[0][0] == operation
         if i == 0:

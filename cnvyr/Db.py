@@ -2,6 +2,7 @@ import contextlib
 import dataclasses
 import datetime
 import enum
+import logging
 import typing
 
 import psycopg
@@ -183,12 +184,14 @@ class Db:
             yield
             self.connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
         except Exception as e:
-            self.connection.execute(
-                "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
-                "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
-                (operation, e.__class__.__name__, str(e)),
-            )
-            raise e
+            try:
+                self.connection.execute(
+                    "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
+                    "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
+                    (operation, e.__class__.__name__, str(e)),
+                )
+            except Exception as db_e:
+                logging.error(f"{db_e.__class__.__name__}: {db_e}")
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
