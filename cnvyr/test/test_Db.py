@@ -61,3 +61,43 @@ def test_update(db: Db):
     assert len(result) == 1
     assert result[0] != created
     assert result[0] == updated
+
+
+def test_error_logging(db: Db):
+    operation = "test_error_logging"
+    error_text = "some value is invalid"
+    error_type = "ValueError"
+
+    with pytest.raises(ValueError):
+        with db.error_logging(operation):
+            raise ValueError(error_text)
+    result = db.connection.execute(
+        "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
+    ).fetchall()
+    print(result)
+    assert len(result) == 1
+    assert result[0][0] == operation
+    assert result[0][1] == result[0][2]
+    assert result[0][3] == error_type
+    assert result[0][4] == error_text
+    assert result[0][5] == 1
+
+    with pytest.raises(ValueError):
+        with db.error_logging("test_error_logging"):
+            raise ValueError("some value is invalid")
+    result = db.connection.execute(
+        "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
+    ).fetchall()
+    assert len(result) == 1
+    assert result[0][0] == operation
+    assert result[0][1] != result[0][2]
+    assert result[0][3] == error_type
+    assert result[0][4] == error_text
+    assert result[0][5] == 2
+
+    with db.error_logging("test_error_logging"):
+        pass
+    result = db.connection.execute(
+        "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
+    ).fetchall()
+    assert not result

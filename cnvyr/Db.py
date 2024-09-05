@@ -1,3 +1,4 @@
+import contextlib
 import dataclasses
 import datetime
 import enum
@@ -34,6 +35,22 @@ class Db:
             cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
             cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
             cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
+
+    def _create_errors_table(self):
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "create table if not exists cnvyr_errors (id bigserial primary key not null, "
+                "first timestamp default(now() at time zone 'utc') not null, "
+                "last timestamp default(now() at time zone 'utc') not null, "
+                "amount bigint default(1), "
+                "operation text not null, error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
+            )
+            cursor.execute("create index if not exists cnvyr_errors_first on cnvyr_errors(first)")
+            cursor.execute("create index if not exists cnvyr_errors_last on cnvyr_errors(last)")
+            cursor.execute("create index if not exists cnvyr_errors_amount on cnvyr_errors(amount)")
+            cursor.execute("create index if not exists cnvyr_errors_operation on cnvyr_errors(operation)")
+            cursor.execute("create index if not exists cnvyr_errors_error_type on cnvyr_errors(error_type)")
+            cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
 
     @property
     def new_connection(self):
@@ -158,6 +175,20 @@ class Db:
                         self._update(*a, cursor)
                     else:
                         raise ValueError(a)
+
+    @contextlib.contextmanager
+    def error_logging(self, operation: str):
+        self._create_errors_table()
+        try:
+            yield
+            self.connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
+        except Exception as e:
+            self.connection.execute(
+                "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
+                "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=excluded.amount+1",
+                (operation, e.__class__.__name__, str(e)),
+            )
+            raise e
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
