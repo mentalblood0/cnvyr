@@ -70,7 +70,7 @@ def test_error_logging(db: Db):
     for i in range(3):
         with db.error_logging(operation):
             raise ValueError(error_text)
-        result = db.connection.execute(
+        result = db._connection.execute(
             "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
         ).fetchall()
         assert len(result) == 1
@@ -85,7 +85,7 @@ def test_error_logging(db: Db):
 
     with db.error_logging("test_error_logging"):
         pass
-    result = db.connection.execute(
+    result = db._connection.execute(
         "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
     ).fetchall()
     assert not result

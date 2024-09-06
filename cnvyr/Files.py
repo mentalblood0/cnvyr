@@ -13,7 +13,7 @@ class Files:
 
     def __post_init__(self):
         if not self.extension.startswith("."):
-            raise ValueError(self.extension)
+            raise ValueError(f"expect extension starting with '.', got {self.extension}")
 
     def digest(self, data: bytes):
         return hashlib.sha512(data).digest()
@@ -46,5 +46,5 @@ class Files:
         path = self.path(created, digest)
         result = self.decompressed(path.read_bytes())
         if (have := self.digest(result)) != digest:
-            raise ValueError(f"for file created at {created}: have {have}, got {digest}")
+            raise ValueError(f"{path} digest: have {have}, got {digest}")
         return result

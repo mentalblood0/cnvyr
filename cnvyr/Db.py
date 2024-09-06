@@ -36,10 +36,10 @@ class Db:
     port: int = 5432
 
     def __post_init__(self):
-        self.connection = self._new_connection
+        self._connection = self._new_connection
 
     def _create_log_table(self):
-        with self.connection.cursor() as cursor:
+        with self._connection.cursor() as cursor:
             cursor.execute(
                 "create table if not exists cnvyr_log (id bigserial primary key not null, "
                 "datetime timestamp default(now() at time zone 'utc') not null, "
@@ -53,7 +53,7 @@ class Db:
             cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
 
     def _create_errors_table(self):
-        with self.connection.cursor() as cursor:
+        with self._connection.cursor() as cursor:
             cursor.execute(
                 "create table if not exists cnvyr_errors (id bigserial primary key not null, "
                 "first timestamp default(now() at time zone 'utc') not null, "
@@ -112,7 +112,7 @@ class Db:
                 elif isinstance(f.type, type) and issubclass(f.type, enum.Enum):
                     field.append("smallint")
                 else:
-                    raise ValueError(f.type)
+                    raise ValueError(f"can not convert type {f.type} to database type")
 
                 if typing.Union[f.type, None] != f.type:
                     field.append("not null")
@@ -125,7 +125,7 @@ class Db:
             cursor.execute(q)
 
     def wipe(self):
-        with self.connection.cursor() as cursor:
+        with self._connection.cursor() as cursor:
             cursor.execute("drop schema public cascade")
             cursor.execute("create schema public")
             cursor.execute("grant all on schema public to postgres")
@@ -140,7 +140,7 @@ class Db:
         query += " returning id"
         result = cursor.execute(query, fields).fetchone()
         if result is None:
-            raise ValueError
+            raise ValueError(f"result of insert is None")
         return result[0]
 
     def _asdict(self, item: Item):
@@ -192,8 +192,8 @@ class Db:
         )
 
     def transaction(self, operation: str, *actions: Item | tuple[Item, Item]):
-        with self.connection.cursor() as cursor:
-            with self.connection.transaction():
+        with self._connection.cursor() as cursor:
+            with self._connection.transaction():
                 for a in actions:
                     if isinstance(a, Item):
                         received_id = self._create(a, cursor)
@@ -202,18 +202,18 @@ class Db:
                         self._log(operation, *a, cursor)
                         self._update(*a, cursor)
                     else:
-                        raise ValueError(a)
+                        raise ValueError(f"expect Item or two-Item tuple, got {a}")
 
     @contextlib.contextmanager
     def error_logging(self, operation: str):
         try:
             self._create_errors_table()
             yield
-            self.connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
+            self._connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
         except Exception as e:
             while True:
                 try:
-                    self.connection.execute(
+                    self._connection.execute(
                         "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
                         "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
                         (operation, e.__class__.__name__, str(e)),
@@ -223,10 +223,10 @@ class Db:
                     logging.error(
                         f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
                     )
-                    self.connection = self._new_connection
+                    self._connection = self._new_connection
 
     def _load(self, query: str, t: type[Item]):
-        with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
+        with self._connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             for d in cursor.execute(query):
                 for f in dataclasses.fields(t):
                     if isinstance(f.type, type) and issubclass(f.type, enum.Enum) and isinstance((v := d[f.name]), int):
