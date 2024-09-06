@@ -17,13 +17,13 @@ class Files:
         if not self.extension.startswith("."):
             raise ValueError(self.extension)
 
-    def digest(self, data):
+    def digest(self, data: bytes):
         return hashlib.sha512(data).digest()
 
-    def compressed(self, data):
+    def compressed(self, data: bytes):
         return zlib.compress(data, level=zlib.Z_BEST_COMPRESSION)
 
-    def decompressed(self, data):
+    def decompressed(self, data: bytes):
         return zlib.decompress(data)
 
     def path(self, created: datetime.datetime, digest: bytes):
