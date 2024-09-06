@@ -4,7 +4,7 @@ import enum
 
 import pytest
 
-from ..Item import Item
+from ..Db import Item
 
 E = enum.Enum("E", ["A", "B"])
 

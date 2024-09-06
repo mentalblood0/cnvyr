@@ -5,8 +5,6 @@ import hashlib
 import pathlib
 import zlib
 
-from .Item import Item
-
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Files:
@@ -50,6 +48,3 @@ class Files:
         if (have := self.digest(result)) != digest:
             raise ValueError(f"for file created at {created}: have {have}, got {digest}")
         return result
-
-    def load_for(self, item: Item):
-        return self.load(item.created, item.digest)

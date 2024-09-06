@@ -6,8 +6,7 @@ import pathlib
 
 import pytest
 
-from ..Db import Db
-from ..Item import Item
+from ..Db import Db, Item
 
 
 @pytest.fixture
@@ -35,7 +34,7 @@ class C(Item):
 def test_save_load(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
     db.transaction("test_save_load:save", c)
-    result = [*db.load("select * from c", C)]
+    result = [*C.load_from(db, "select * from c")]
     assert len(result) == 1
     assert result[0] == c
 
@@ -43,7 +42,7 @@ def test_save_load(db: Db):
 def test_update(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
     db.transaction("test_update:save", c)
-    created = [*db.load("select * from c", C)][0]
+    created = [*C.load_from(db, "select * from c")][0]
 
     updated = dataclasses.replace(
         created,
@@ -57,7 +56,7 @@ def test_update(db: Db):
     )
     db.transaction("test_update:update", (created, updated))
 
-    result = [*db.load("select * from c", C)]
+    result = [*C.load_from(db, "select * from c")]
     assert len(result) == 1
     assert result[0] != created
     assert result[0] == updated
