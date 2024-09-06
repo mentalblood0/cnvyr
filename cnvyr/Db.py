@@ -23,7 +23,7 @@ class Item:
 
     @classmethod
     def load_from(cls, db: "Db", query: str):
-        for d in db.load(query, cls):
+        for d in db._load(query, cls):
             yield cls(**d)
 
 
@@ -36,7 +36,7 @@ class Db:
     port: int = 5432
 
     def __post_init__(self):
-        self.connection = self.new_connection
+        self.connection = self._new_connection
 
     def _create_log_table(self):
         with self.connection.cursor() as cursor:
@@ -69,7 +69,7 @@ class Db:
             cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
 
     @property
-    def new_connection(self):
+    def _new_connection(self):
         while True:
             try:
                 return psycopg.connect(
@@ -79,11 +79,11 @@ class Db:
             except Exception as e:
                 logging.error(f"Exception ({e.__class__.__name__}, {e}) when connecting to db {self}")
 
-    def table_name(self, item: Item):
+    def _table_name(self, item: Item):
         return type(item).__name__.lower()
 
     def _create_table(self, c: Item, cursor: psycopg.Cursor):
-        t_name = self.table_name(c)
+        t_name = self._table_name(c)
         ct_query = f"create table if not exists {t_name}"
         fields = []
         ci_queries = []
@@ -133,8 +133,8 @@ class Db:
 
     def _create(self, item: Item, cursor: psycopg.Cursor):
         self._create_table(item, cursor)
-        query = f"insert into {self.table_name(item)}"
-        fields = self.asdict(item)
+        query = f"insert into {self._table_name(item)}"
+        fields = self._asdict(item)
         del fields["id"]
         query += "(" + ", ".join(fields) + ") values (" + ", ".join(f"%({k})s" for k in fields) + ")"
         query += " returning id"
@@ -143,27 +143,27 @@ class Db:
             raise ValueError
         return result[0]
 
-    def asdict(self, item: Item):
+    def _asdict(self, item: Item):
         return {k: v.value if isinstance(v, enum.Enum) else v for k, v in dataclasses.asdict(item).items()}
 
-    def diff(self, old: Item | None, new: Item):
-        d_old = self.asdict(old) if old is not None else {}
-        d_new = self.asdict(new)
+    def _diff(self, old: Item | None, new: Item):
+        d_old = self._asdict(old) if old is not None else {}
+        d_new = self._asdict(new)
         if old is not None:
             del d_old["id"]
         del d_new["id"]
         return dict(set(d_new.items()) - set(d_old.items()))
 
     def _update(self, old: Item, new: Item, cursor: psycopg.Cursor):
-        t_name = self.table_name(old)
-        if t_name != (t_name_new := self.table_name(new)):
+        t_name = self._table_name(old)
+        if t_name != (t_name_new := self._table_name(new)):
             raise ValueError(f"old item table name {t_name} != {t_name_new}")
         if old.id != new.id:
             raise ValueError(f"old item id {old.id} != {new.id}")
 
         query = f"update {t_name} set "
 
-        diff = self.diff(old, new)
+        diff = self._diff(old, new)
         if not diff:
             return
         for k, v in diff.items():
@@ -171,7 +171,7 @@ class Db:
                 raise ValueError(f"attempt to change constant field: ({k}, {v})")
         query += ", ".join(f"{k}=%({k})s" for k in diff)
 
-        rdiff = self.diff(new, old)
+        rdiff = self._diff(new, old)
         query += " where " + " and ".join(f"{k}=%(_{k})s" for k in rdiff.keys())
 
         if (
@@ -186,7 +186,7 @@ class Db:
             "insert into cnvyr_log(item_id, operation, key, value) values(%s, %s, %s, %s)",
             [
                 (new.id, operation, k, str(v))
-                for k, v in self.diff(old, new).items()
+                for k, v in self._diff(old, new).items()
                 if not ((old is None) and (v is None))
             ],
         )
@@ -223,9 +223,9 @@ class Db:
                     logging.error(
                         f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
                     )
-                    self.connection = self.new_connection
+                    self.connection = self._new_connection
 
-    def load(self, query: str, t: type[Item]):
+    def _load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             for d in cursor.execute(query):
                 for f in dataclasses.fields(t):
