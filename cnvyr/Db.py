@@ -55,10 +55,14 @@ class Db:
 
     @property
     def new_connection(self):
-        return psycopg.connect(
-            f"host={self.host} port={self.port} dbname={self.name} user={self.user} password={self.password}",
-            autocommit=True,
-        )
+        while True:
+            try:
+                return psycopg.connect(
+                    f"host={self.host} port={self.port} dbname={self.name} user={self.user} password={self.password}",
+                    autocommit=True,
+                )
+            except Exception as e:
+                logging.error(f"Exception ({e.__class__.__name__}, {e}) when connecting to db {self}")
 
     def table_name(self, item: Item):
         return type(item).__name__.lower()
@@ -192,16 +196,19 @@ class Db:
             yield
             self.connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
         except Exception as e:
-            try:
-                self.connection.execute(
-                    "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
-                    "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
-                    (operation, e.__class__.__name__, str(e)),
-                )
-            except Exception as db_e:
-                logging.error(
-                    f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
-                )
+            while True:
+                try:
+                    self.connection.execute(
+                        "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
+                        "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
+                        (operation, e.__class__.__name__, str(e)),
+                    )
+                    break
+                except Exception as db_e:
+                    logging.error(
+                        f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
+                    )
+                    self.connection = self.new_connection
 
     def load(self, query: str, t: type[Item]):
         with self.connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
