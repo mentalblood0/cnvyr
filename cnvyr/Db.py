@@ -34,6 +34,7 @@ class Db:
     name: str
     host: str = "127.0.0.1"
     port: int = 5432
+    ItemType: type[enum.Enum]
 
     def __post_init__(self):
         self._connection = self._new_connection
@@ -43,7 +44,7 @@ class Db:
             cursor.execute(
                 "create table if not exists cnvyr_log (id bigserial primary key not null, "
                 "datetime timestamp default(now() at time zone 'utc') not null, "
-                "item_id bigint not null, operation text not null, "
+                "item_type smallint not null, item_id bigint not null, operation text not null, "
                 "key text not null, value text not null)"
             )
             cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
@@ -58,8 +59,8 @@ class Db:
                 "create table if not exists cnvyr_errors (id bigserial primary key not null, "
                 "first timestamp default(now() at time zone 'utc') not null, "
                 "last timestamp default(now() at time zone 'utc') not null, "
-                "amount bigint default(1), "
-                "operation text not null, error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
+                "amount bigint default(1), operation text not null, "
+                "error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
             )
             cursor.execute("create index if not exists cnvyr_errors_first on cnvyr_errors(first)")
             cursor.execute("create index if not exists cnvyr_errors_last on cnvyr_errors(last)")
@@ -183,9 +184,9 @@ class Db:
     def _log(self, operation: str, old: Item | None, new: Item, cursor: psycopg.Cursor):
         self._create_log_table()
         cursor.executemany(
-            "insert into cnvyr_log(item_id, operation, key, value) values(%s, %s, %s, %s)",
+            "insert into cnvyr_log(item_type, item_id, operation, key, value) values(%s, %s, %s, %s, %s)",
             [
-                (new.id, operation, k, str(v))
+                (getattr(self.ItemType, self._table_name(new)).value, new.id, operation, k, str(v))
                 for k, v in self._diff(old, new).items()
                 if not ((old is None) and (v is None))
             ],
