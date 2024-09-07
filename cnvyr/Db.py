@@ -34,7 +34,7 @@ class Db:
     name: str
     host: str = "127.0.0.1"
     port: int = 5432
-    ItemType: type[enum.Enum]
+    items_types: list[type[Item]]
 
     def __post_init__(self):
         self._connection = self._new_connection
@@ -186,7 +186,7 @@ class Db:
         cursor.executemany(
             "insert into cnvyr_log(item_type, item_id, operation, key, value) values(%s, %s, %s, %s, %s)",
             [
-                (getattr(self.ItemType, self._table_name(new)).value, new.id, operation, k, str(v))
+                (self.items_types.index(type(new)), new.id, operation, k, str(v))
                 for k, v in self._diff(old, new).items()
                 if not ((old is None) and (v is None))
             ],

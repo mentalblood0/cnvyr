@@ -11,7 +11,7 @@ from ..Db import Db, Item
 
 @pytest.fixture
 def db():
-    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), ItemType=enum.Enum("ItemType", ["c"]))
+    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C])
     result.wipe()
     yield result
     result.wipe()
