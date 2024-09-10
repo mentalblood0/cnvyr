@@ -35,6 +35,7 @@ class Db:
     host: str = "127.0.0.1"
     port: int = 5432
     items_types: list[type[Item]]
+    Operation: type[enum.Enum]
 
     def __post_init__(self):
         self._connection = self._new_connection
@@ -44,7 +45,7 @@ class Db:
             cursor.execute(
                 "create table if not exists cnvyr_log (id bigserial primary key not null, "
                 "datetime timestamp default(now() at time zone 'utc') not null, "
-                "item_type smallint not null, item_id bigint not null, operation text not null, "
+                "item_type smallint not null, item_id bigint not null, operation smallint not null, "
                 "key text not null, value text not null)"
             )
             cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
@@ -60,7 +61,7 @@ class Db:
                 "create table if not exists cnvyr_errors (id bigserial primary key not null, "
                 "first timestamp default(now() at time zone 'utc') not null, "
                 "last timestamp default(now() at time zone 'utc') not null, "
-                "amount bigint default(1), operation text not null, "
+                "amount bigint default(1), operation smallint not null, "
                 "error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
             )
             cursor.execute("create index if not exists cnvyr_errors_first on cnvyr_errors(first)")
@@ -182,18 +183,18 @@ class Db:
         ):
             raise ValueError(f"update resulted in {result}")
 
-    def _log(self, operation: str, old: Item | None, new: Item, cursor: psycopg.Cursor):
+    def _log(self, operation: enum.Enum, old: Item | None, new: Item, cursor: psycopg.Cursor):
         self._create_log_table()
         cursor.executemany(
             "insert into cnvyr_log(item_type, item_id, operation, key, value) values(%s, %s, %s, %s, %s)",
             [
-                (self.items_types.index(type(new)), new.id, operation, k, str(v))
+                (self.items_types.index(type(new)), new.id, operation.value, k, str(v))
                 for k, v in self._diff(old, new).items()
                 if not ((old is None) and (v is None))
             ],
         )
 
-    def transaction(self, operation: str, *actions: Item | tuple[Item, Item]):
+    def transaction(self, operation: enum.Enum, *actions: Item | tuple[Item, Item]):
         with self._connection.cursor() as cursor:
             with self._connection.transaction():
                 for a in actions:
@@ -207,18 +208,18 @@ class Db:
                         raise ValueError(f"expect Item or two-Item tuple, got {a}")
 
     @contextlib.contextmanager
-    def error_logging(self, operation: str):
+    def error_logging(self, operation: enum.Enum):
         try:
             self._create_errors_table()
             yield
-            self._connection.execute("delete from cnvyr_errors where operation=%s", (operation,))
+            self._connection.execute("delete from cnvyr_errors where operation=%s", (operation.value,))
         except Exception as e:
             while True:
                 try:
                     self._connection.execute(
                         "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
                         "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
-                        (operation, e.__class__.__name__, str(e)),
+                        (operation.value, e.__class__.__name__, str(e)),
                     )
                     break
                 except Exception as db_e:

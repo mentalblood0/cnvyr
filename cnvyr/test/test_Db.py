@@ -8,10 +8,12 @@ import pytest
 
 from ..Db import Db, Item
 
+Operation = enum.Enum("Operation", ["test_save_load", "test_update__save", "test_update__update", "test_error_logging"])
+
 
 @pytest.fixture
 def db():
-    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C])
+    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C], Operation=Operation)
     result.wipe()
     yield result
     result.wipe()
@@ -33,7 +35,7 @@ class C(Item):
 
 def test_save_load(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
-    db.transaction("test_save_load:save", c)
+    db.transaction(Operation.test_save_load, c)
     result = [*C.load_from(db, "select * from c")]
     assert len(result) == 1
     assert result[0] == c
@@ -41,7 +43,7 @@ def test_save_load(db: Db):
 
 def test_update(db: Db):
     c = C(digest=b"digest", created=datetime.datetime.now())
-    db.transaction("test_update:save", c)
+    db.transaction(Operation.test_update__save, c)
     created = [*C.load_from(db, "select * from c")][0]
 
     updated = dataclasses.replace(
@@ -54,7 +56,7 @@ def test_update(db: Db):
         test_datetime=datetime.datetime.now(),
         test_enum=E.B,
     )
-    db.transaction("test_update:update", (created, updated))
+    db.transaction(Operation.test_update__update, (created, updated))
 
     result = [*C.load_from(db, "select * from c")]
     assert len(result) == 1
@@ -63,7 +65,7 @@ def test_update(db: Db):
 
 
 def test_error_logging(db: Db):
-    operation = "test_error_logging"
+    operation = Operation.test_error_logging
     error_text = "some value is invalid"
     error_type = "ValueError"
 
@@ -74,7 +76,7 @@ def test_error_logging(db: Db):
             "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
         ).fetchall()
         assert len(result) == 1
-        assert result[0][0] == operation
+        assert result[0][0] == operation.value
         if i == 0:
             assert result[0][1] == result[0][2]
         else:
@@ -83,7 +85,7 @@ def test_error_logging(db: Db):
         assert result[0][4] == error_text
         assert result[0][5] == i + 1
 
-    with db.error_logging("test_error_logging"):
+    with db.error_logging(operation):
         pass
     result = db._connection.execute(
         "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
