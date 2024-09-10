@@ -68,7 +68,7 @@ class Db:
                 "first timestamp default(now() at time zone 'utc') not null, "
                 "last timestamp default(now() at time zone 'utc') not null, "
                 "amount bigint default(1), operation cnvyr_enum not null, "
-                "error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
+                "error_type cnvyr_enum not null, error_text text not null, unique (operation, error_type, error_text))"
             )
             cursor.execute("create index if not exists cnvyr_errors_first on cnvyr_errors(first)")
             cursor.execute("create index if not exists cnvyr_errors_last on cnvyr_errors(last)")
@@ -260,19 +260,21 @@ class Db:
             yield
             self._connection.execute("delete from cnvyr_errors where operation=%s", (operation.name,))
         except Exception as e:
+            error_type = type(e).__name__
             while True:
                 try:
+                    self._add_enum_values(error_type)
                     self._connection.execute(
                         "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
                         "on conflict (operation, error_type, error_text) do update "
                         "set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
-                        (operation.name, e.__class__.__name__, str(e)),
+                        (operation.name, error_type, str(e)),
                     )
                     break
                 except Exception as db_e:
                     logging.error(
                         f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log "
-                        f"exception ({e.__class__.__name__}, {e}) to db"
+                        f"exception ({error_type}, {e}) to db"
                     )
                     self._connection = self._new_connection
 
