@@ -38,34 +38,36 @@ class Db:
     host: str = "127.0.0.1"
     port: int = 5432
     items_types: list[type[Item]]
-    Operation: type[enum.Enum]
 
     def __post_init__(self):
         self._connection = self._new_connection
         self._enum_values_cache: set[str] = set()
         self._enum_created = False
 
-    def _create_log_table(self, cursor: psycopg.Cursor):
-        cursor.execute(
-            "create table if not exists cnvyr_log (id bigserial primary key not null, "
-            "datetime timestamp default(now() at time zone 'utc') not null, "
-            "item_type smallint not null, item_id bigint not null, operation smallint not null, "
-            "key text not null, value text not null)"
-        )
-        cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
-        cursor.execute("create index if not exists cnvyr_log_item_type on cnvyr_log(item_type)")
-        cursor.execute("create index if not exists cnvyr_log_item_id on cnvyr_log(item_id)")
-        cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
-        cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
-        cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
+    def _create_log_table(self):
+        self._create_enum()
+        with self._connection.cursor() as cursor:
+            cursor.execute(
+                "create table if not exists cnvyr_log (id bigserial primary key not null, "
+                "datetime timestamp default(now() at time zone 'utc') not null, "
+                "item_type cnvyr_enum not null, item_id bigint not null, operation cnvyr_enum not null, "
+                "key text not null, value text not null)"
+            )
+            cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
+            cursor.execute("create index if not exists cnvyr_log_item_type on cnvyr_log(item_type)")
+            cursor.execute("create index if not exists cnvyr_log_item_id on cnvyr_log(item_id)")
+            cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
+            cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
+            cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
 
     def _create_errors_table(self):
+        self._create_enum()
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "create table if not exists cnvyr_errors (id bigserial primary key not null, "
                 "first timestamp default(now() at time zone 'utc') not null, "
                 "last timestamp default(now() at time zone 'utc') not null, "
-                "amount bigint default(1), operation smallint not null, "
+                "amount bigint default(1), operation cnvyr_enum not null, "
                 "error_type text not null, error_text text not null, unique (operation, error_type, error_text))"
             )
             cursor.execute("create index if not exists cnvyr_errors_first on cnvyr_errors(first)")
@@ -76,14 +78,15 @@ class Db:
             cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
 
     def _create_enum(self):
-        try:
-            self._connection.execute("create type cnvyr_enum as enum ()")
-        except psycopg.errors.DuplicateObject:
-            for r in self._connection.execute(
-                "select e.enumlabel from pg_enum as e join pg_type as t " "on e.enumtypid=t.oid where t.typname=%s",
-                ("cnvyr_enum",),
-            ):
-                self._enum_values_cache.add(r[0])
+        if not self._enum_created:
+            try:
+                self._connection.execute("create type cnvyr_enum as enum ()")
+            except psycopg.errors.DuplicateObject:
+                for r in self._connection.execute(
+                    "select e.enumlabel from pg_enum as e join pg_type as t on e.enumtypid=t.oid where t.typname=%s",
+                    ("cnvyr_enum",),
+                ).fetchall():
+                    self._enum_values_cache.add(r[0])
 
     def _enum_values(self, source: str | type[enum.Enum] | type[Item]):
         result: set[str] = set()
@@ -92,19 +95,18 @@ class Db:
         elif isinstance(source, type) and issubclass(source, enum.Enum):
             result |= {e.name for e in source}
         elif isinstance(source, type) and issubclass(source, Item):
+            result.add(source.__name__)
             for f in source.__dataclass_fields__.values():
                 result |= self._enum_values(f.type)
         return result
 
-    def _add_enum_values(self, source: list[str | type[enum.Enum] | type[Item]]):
+    def _add_enum_values(self, *source: str | type[enum.Enum] | type[Item]):
         names: set[str] = set()
         for s in source:
             names |= self._enum_values(s)
 
-        if not self._enum_created:
-            self._create_enum()
-        else:
-            names -= self._enum_values_cache
+        self._create_enum()
+        names -= self._enum_values_cache
 
         if names:
             with self._connection.cursor() as cursor:
@@ -225,18 +227,18 @@ class Db:
             raise ValueError(f"update resulted in {result}")
 
     def _log(self, operation: enum.Enum, old: Item | None, new: Item, cursor: psycopg.Cursor):
-        self._create_log_table(cursor)
         cursor.executemany(
             "insert into cnvyr_log(item_type, item_id, operation, key, value) values(%s, %s, %s, %s, %s)",
             [
-                (self.items_types.index(type(new)), new.id, operation.value, k, str(v))
+                (type(new).__name__, new.id, operation.name, k, str(v))
                 for k, v in self._diff(old, new).items()
                 if not ((old is None) and (v is None))
             ],
         )
 
     def transaction(self, operation: enum.Enum, *actions: Item | tuple[Item, Item]):
-        self._add_enum_values([a.__class__ if isinstance(a, Item) else a[1].__class__ for a in actions])
+        self._add_enum_values(type(operation), *[type(a) if isinstance(a, Item) else type(a[1]) for a in actions])
+        self._create_log_table()
         with self._connection.cursor() as cursor:
             with self._connection.transaction():
                 for a in actions:
@@ -253,8 +255,9 @@ class Db:
     def error_logging(self, operation: enum.Enum):
         try:
             self._create_errors_table()
+            self._add_enum_values(type(operation))
             yield
-            self._connection.execute("delete from cnvyr_errors where operation=%s", (operation.value,))
+            self._connection.execute("delete from cnvyr_errors where operation=%s", (operation.name,))
         except Exception as e:
             while True:
                 try:
@@ -262,7 +265,7 @@ class Db:
                         "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
                         "on conflict (operation, error_type, error_text) do update "
                         "set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
-                        (operation.value, e.__class__.__name__, str(e)),
+                        (operation.name, e.__class__.__name__, str(e)),
                     )
                     break
                 except Exception as db_e:

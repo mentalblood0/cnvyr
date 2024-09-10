@@ -13,7 +13,7 @@ Operation = enum.Enum("Operation", ["test_save_load", "test_update__save", "test
 
 @pytest.fixture
 def db():
-    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C], Operation=Operation)
+    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C])
     result.wipe()
     yield result
     result.wipe()
@@ -76,7 +76,7 @@ def test_error_logging(db: Db):
             "select operation, first, last, error_type, error_text, amount from cnvyr_errors"
         ).fetchall()
         assert len(result) == 1
-        assert result[0][0] == operation.value
+        assert result[0][0] == operation.name
         if i == 0:
             assert result[0][1] == result[0][2]
         else:
