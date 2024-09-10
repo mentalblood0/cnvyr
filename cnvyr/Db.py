@@ -19,7 +19,10 @@ class Item:
     def __post_init__(self):
         for f in dataclasses.fields(self):
             if f.type | type(value := getattr(self, f.name)) != f.type:
-                raise ValueError(f"{self.__class__.__name__}.{f.name} expects value of type {f.type}, got {value}")
+                raise ValueError(
+                    f"{self.__class__.__name__}.{f.name} expects value of type {f.type}, "
+                    f"got {value} of type {type(value)}"
+                )
 
     @classmethod
     def load_from(cls, db: "Db", query: str):
@@ -40,20 +43,19 @@ class Db:
     def __post_init__(self):
         self._connection = self._new_connection
 
-    def _create_log_table(self):
-        with self._connection.cursor() as cursor:
-            cursor.execute(
-                "create table if not exists cnvyr_log (id bigserial primary key not null, "
-                "datetime timestamp default(now() at time zone 'utc') not null, "
-                "item_type smallint not null, item_id bigint not null, operation smallint not null, "
-                "key text not null, value text not null)"
-            )
-            cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
-            cursor.execute("create index if not exists cnvyr_log_item_type on cnvyr_log(item_type)")
-            cursor.execute("create index if not exists cnvyr_log_item_id on cnvyr_log(item_id)")
-            cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
-            cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
-            cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
+    def _create_log_table(self, cursor: psycopg.Cursor):
+        cursor.execute(
+            "create table if not exists cnvyr_log (id bigserial primary key not null, "
+            "datetime timestamp default(now() at time zone 'utc') not null, "
+            "item_type smallint not null, item_id bigint not null, operation smallint not null, "
+            "key text not null, value text not null)"
+        )
+        cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
+        cursor.execute("create index if not exists cnvyr_log_item_type on cnvyr_log(item_type)")
+        cursor.execute("create index if not exists cnvyr_log_item_id on cnvyr_log(item_id)")
+        cursor.execute("create index if not exists cnvyr_log_operation on cnvyr_log(operation)")
+        cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
+        cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
 
     def _create_errors_table(self):
         with self._connection.cursor() as cursor:
@@ -70,6 +72,34 @@ class Db:
             cursor.execute("create index if not exists cnvyr_errors_operation on cnvyr_errors(operation)")
             cursor.execute("create index if not exists cnvyr_errors_error_type on cnvyr_errors(error_type)")
             cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
+
+    def _create_enum(self):
+        with self._connection.cursor() as cursor:
+            try:
+                cursor.execute("create type cnvyr_enum as enum ()")
+            except psycopg.errors.DuplicateObject:
+                pass
+
+    def _enum_values(self, source: str | type[enum.Enum] | type[Item]):
+        result = []
+        if isinstance(source, str):
+            result.append(source)
+        elif isinstance(source, type) and issubclass(source, enum.Enum):
+            result += [e.name for e in source]
+        elif isinstance(source, type) and issubclass(source, Item):
+            for f in source.__dataclass_fields__.values():
+                result += self._enum_values(f.type)
+        return result
+
+    def _add_enum_values(self, source: list[str | type[enum.Enum] | type[Item]]):
+        names = []
+        for s in source:
+            names += self._enum_values(s)
+
+        self._create_enum()
+        with self._connection.cursor() as cursor:
+            for n in names:
+                cursor.execute(f"alter type cnvyr_enum add value if not exists '{n}'")
 
     @property
     def _new_connection(self):
@@ -113,7 +143,7 @@ class Db:
                 elif f.type | datetime.datetime == f.type:
                     field.append("timestamp")
                 elif isinstance(f.type, type) and issubclass(f.type, enum.Enum):
-                    field.append("smallint")
+                    field.append("cnvyr_enum")
                 else:
                     raise ValueError(f"can not convert type {f.type} to database type")
 
@@ -147,7 +177,7 @@ class Db:
         return result[0]
 
     def _asdict(self, item: Item):
-        return {k: v.value if isinstance(v, enum.Enum) else v for k, v in dataclasses.asdict(item).items()}
+        return {k: v.name if isinstance(v, enum.Enum) else v for k, v in dataclasses.asdict(item).items()}
 
     def _diff(self, old: Item | None, new: Item):
         d_old = self._asdict(old) if old is not None else {}
@@ -184,7 +214,7 @@ class Db:
             raise ValueError(f"update resulted in {result}")
 
     def _log(self, operation: enum.Enum, old: Item | None, new: Item, cursor: psycopg.Cursor):
-        self._create_log_table()
+        self._create_log_table(cursor)
         cursor.executemany(
             "insert into cnvyr_log(item_type, item_id, operation, key, value) values(%s, %s, %s, %s, %s)",
             [
@@ -195,6 +225,7 @@ class Db:
         )
 
     def transaction(self, operation: enum.Enum, *actions: Item | tuple[Item, Item]):
+        self._add_enum_values([a.__class__ if isinstance(a, Item) else a[1].__class__ for a in actions])
         with self._connection.cursor() as cursor:
             with self._connection.transaction():
                 for a in actions:
@@ -218,13 +249,15 @@ class Db:
                 try:
                     self._connection.execute(
                         "insert into cnvyr_errors(operation, error_type, error_text) values (%s, %s, %s) "
-                        "on conflict (operation, error_type, error_text) do update set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
+                        "on conflict (operation, error_type, error_text) do update "
+                        "set last=now() at time zone 'utc', amount=cnvyr_errors.amount+1",
                         (operation.value, e.__class__.__name__, str(e)),
                     )
                     break
                 except Exception as db_e:
                     logging.error(
-                        f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log exception ({e.__class__.__name__}, {e}) to db"
+                        f"Exception ({db_e.__class__.__name__}, {db_e}) when trying to log "
+                        f"exception ({e.__class__.__name__}, {e}) to db"
                     )
                     self._connection = self._new_connection
 
@@ -232,6 +265,10 @@ class Db:
         with self._connection.cursor(row_factory=psycopg.rows.dict_row) as cursor:
             for d in cursor.execute(query):
                 for f in dataclasses.fields(t):
-                    if isinstance(f.type, type) and issubclass(f.type, enum.Enum) and isinstance((v := d[f.name]), int):
-                        d[f.name] = f.type(v)
+                    if isinstance(f.type, type) and issubclass(f.type, enum.Enum):
+                        if not isinstance((v := d[f.name]), str):
+                            raise ValueError(
+                                f"expected string value for field named {f.name}, got {v} of type {type(v)}"
+                            )
+                        d[f.name] = getattr(f.type, v)
                 yield d
