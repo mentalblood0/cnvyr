@@ -42,6 +42,8 @@ class Db:
 
     def __post_init__(self):
         self._connection = self._new_connection
+        self._enum_values_cache: set[str] = set()
+        self._enum_created = False
 
     def _create_log_table(self, cursor: psycopg.Cursor):
         cursor.execute(
@@ -74,32 +76,41 @@ class Db:
             cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
 
     def _create_enum(self):
-        with self._connection.cursor() as cursor:
-            try:
-                cursor.execute("create type cnvyr_enum as enum ()")
-            except psycopg.errors.DuplicateObject:
-                pass
+        try:
+            self._connection.execute("create type cnvyr_enum as enum ()")
+        except psycopg.errors.DuplicateObject:
+            for r in self._connection.execute(
+                "select e.enumlabel from pg_enum as e join pg_type as t " "on e.enumtypid=t.oid where t.typname=%s",
+                ("cnvyr_enum",),
+            ):
+                self._enum_values_cache.add(r[0])
 
     def _enum_values(self, source: str | type[enum.Enum] | type[Item]):
-        result = []
+        result: set[str] = set()
         if isinstance(source, str):
-            result.append(source)
+            result.add(source)
         elif isinstance(source, type) and issubclass(source, enum.Enum):
-            result += [e.name for e in source]
+            result |= {e.name for e in source}
         elif isinstance(source, type) and issubclass(source, Item):
             for f in source.__dataclass_fields__.values():
-                result += self._enum_values(f.type)
+                result |= self._enum_values(f.type)
         return result
 
     def _add_enum_values(self, source: list[str | type[enum.Enum] | type[Item]]):
-        names = []
+        names: set[str] = set()
         for s in source:
-            names += self._enum_values(s)
+            names |= self._enum_values(s)
 
-        self._create_enum()
-        with self._connection.cursor() as cursor:
-            for n in names:
-                cursor.execute(f"alter type cnvyr_enum add value if not exists '{n}'")
+        if not self._enum_created:
+            self._create_enum()
+        else:
+            names -= self._enum_values_cache
+
+        if names:
+            with self._connection.cursor() as cursor:
+                for n in names:
+                    cursor.execute(f"alter type cnvyr_enum add value if not exists '{n}'")
+            self._enum_values_cache |= {*names}
 
     @property
     def _new_connection(self):
