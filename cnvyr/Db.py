@@ -2,6 +2,7 @@ import contextlib
 import dataclasses
 import datetime
 import enum
+import functools
 import logging
 import typing
 
@@ -42,10 +43,10 @@ class Db:
     def __post_init__(self):
         self._connection = self._new_connection
         self._enum_values_cache: set[str] = set()
-        self._enum_created = False
 
+    @functools.cached_property
     def _create_log_table(self):
-        self._create_enum()
+        self._create_enum
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "create table if not exists cnvyr_log (id bigserial primary key not null, "
@@ -60,8 +61,9 @@ class Db:
             cursor.execute("create index if not exists cnvyr_log_key on cnvyr_log(key)")
             cursor.execute("create index if not exists cnvyr_log_value on cnvyr_log(value)")
 
+    @functools.cached_property
     def _create_errors_table(self):
-        self._create_enum()
+        self._create_enum
         with self._connection.cursor() as cursor:
             cursor.execute(
                 "create table if not exists cnvyr_errors (id bigserial primary key not null, "
@@ -77,16 +79,16 @@ class Db:
             cursor.execute("create index if not exists cnvyr_errors_error_type on cnvyr_errors(error_type)")
             cursor.execute("create index if not exists cnvyr_errors_error_text on cnvyr_errors(error_text)")
 
+    @functools.cached_property
     def _create_enum(self):
-        if not self._enum_created:
-            try:
-                self._connection.execute("create type cnvyr_enum as enum ()")
-            except psycopg.errors.DuplicateObject:
-                for r in self._connection.execute(
-                    "select e.enumlabel from pg_enum as e join pg_type as t on e.enumtypid=t.oid where t.typname=%s",
-                    ("cnvyr_enum",),
-                ).fetchall():
-                    self._enum_values_cache.add(r[0])
+        try:
+            self._connection.execute("create type cnvyr_enum as enum ()")
+        except psycopg.errors.DuplicateObject:
+            for r in self._connection.execute(
+                "select e.enumlabel from pg_enum as e join pg_type as t on e.enumtypid=t.oid where t.typname=%s",
+                ("cnvyr_enum",),
+            ).fetchall():
+                self._enum_values_cache.add(r[0])
 
     def _enum_values(self, source: str | type[enum.Enum] | type[Item]):
         result: set[str] = set()
@@ -106,7 +108,7 @@ class Db:
         for s in source:
             names |= self._enum_values(s)
 
-        self._create_enum()
+        self._create_enum
         names -= self._enum_values_cache
 
         if names:
@@ -239,7 +241,7 @@ class Db:
 
     def transaction(self, operation: enum.Enum, *actions: Item | tuple[Item, Item]):
         self._add_enum_values(type(operation), *[type(a) if isinstance(a, Item) else type(a[1]) for a in actions])
-        self._create_log_table()
+        self._create_log_table
         with self._connection.cursor() as cursor:
             with self._connection.transaction():
                 for a in actions:
@@ -255,7 +257,7 @@ class Db:
     @contextlib.contextmanager
     def error_logging(self, operation: enum.Enum):
         try:
-            self._create_errors_table()
+            self._create_errors_table
             self._add_enum_values(type(operation))
             yield
             self._connection.execute("delete from cnvyr_errors where operation=%s", (operation.name,))
