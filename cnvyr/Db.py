@@ -51,7 +51,7 @@ class Db:
                 "create table if not exists cnvyr_log (id bigserial primary key not null, "
                 "datetime timestamp default(now() at time zone 'utc') not null, "
                 "item_type cnvyr_enum not null, item_id bigint not null, operation cnvyr_enum not null, "
-                "key text not null, value text not null)"
+                "key cnvyr_enum not null, value text not null)"
             )
             cursor.execute("create index if not exists cnvyr_log_datetime on cnvyr_log(datetime)")
             cursor.execute("create index if not exists cnvyr_log_item_type on cnvyr_log(item_type)")
@@ -97,6 +97,7 @@ class Db:
         elif isinstance(source, type) and issubclass(source, Item):
             result.add(source.__name__)
             for f in source.__dataclass_fields__.values():
+                result.add(f.name)
                 result |= self._enum_values(f.type)
         return result
 
