@@ -38,7 +38,6 @@ class Db:
     name: str
     host: str = "127.0.0.1"
     port: int = 5432
-    items_types: list[type[Item]]
 
     def __post_init__(self):
         self._connection = self._new_connection

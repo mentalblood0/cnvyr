@@ -13,7 +13,7 @@ Operation = enum.Enum("Operation", ["test_save_load", "test_update__save", "test
 
 @pytest.fixture
 def db():
-    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()), items_types=[C])
+    result = Db(**json.loads(pathlib.Path("credentials.json").read_text()))
     result.wipe()
     yield result
     result.wipe()

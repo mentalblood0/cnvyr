@@ -5,3 +5,4 @@ test_realistic.py
 build
 dist
 *.egg*
+test_realistic
