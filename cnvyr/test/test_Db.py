@@ -4,13 +4,17 @@ import datetime
 import enum
 import json
 import pathlib
+import platform
 
 import pytest
 import pytest_asyncio
 
 from ..Db import Db, Item
 
-asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+if platform.system() == "Windows":
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 Operation = enum.Enum("Operation", ["test_save_load", "test_update__save", "test_update__update", "test_error_logging"])
 
