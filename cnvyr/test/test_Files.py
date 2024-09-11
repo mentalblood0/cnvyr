@@ -5,6 +5,8 @@ import pytest
 
 from ..Files import Files
 
+pytest_plugins = ("pytest_asyncio",)
+
 
 @pytest.fixture
 def files():
@@ -14,7 +16,8 @@ def files():
     shutil.rmtree(path, ignore_errors=True)
 
 
-def test_save_load(files: Files):
+@pytest.mark.asyncio
+async def test_save_load(files: Files):
     data = b"lalala"
-    created, digest = files.save(data)
+    created, digest = await files.save(data)
     assert files.load(created, digest) == data

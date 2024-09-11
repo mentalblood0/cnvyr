@@ -5,6 +5,8 @@ import hashlib
 import pathlib
 import zlib
 
+import aiofile
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Files:
@@ -34,12 +36,17 @@ class Files:
             / (f"{created.minute:02}_{created.second:02}_" + base64.b64encode(digest.rstrip(b"=")).decode("ascii"))
         ).with_suffix(self.extension + ".gz")
 
-    def save(self, data: bytes):
+    async def save(self, data: bytes):
         created = datetime.datetime.now(datetime.UTC)
         digest = self.digest(data)
+
         path = self.path(created, digest)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(self.compressed(data))
+
+        compressed = self.compressed(data)
+        async with aiofile.async_open(path, mode="wb", encoding="utf8") as af:
+            await af.write(compressed)
+
         return created, digest
 
     def load(self, created: datetime.datetime, digest: bytes):
