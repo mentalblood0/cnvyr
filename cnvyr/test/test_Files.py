@@ -20,4 +20,4 @@ def files():
 async def test_save_load(files: Files):
     data = b"lalala"
     created, digest = await files.save(data)
-    assert files.load(created, digest) == data
+    assert await files.load(created, digest) == data

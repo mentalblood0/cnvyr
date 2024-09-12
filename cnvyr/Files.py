@@ -44,14 +44,18 @@ class Files:
         path.parent.mkdir(parents=True, exist_ok=True)
 
         compressed = self.compressed(data)
-        async with aiofile.async_open(path, mode="wb", encoding="utf8") as af:
+        async with aiofile.async_open(path, mode="wb") as af:
             await af.write(compressed)
 
         return created, digest
 
-    def load(self, created: datetime.datetime, digest: bytes):
+    async def load(self, created: datetime.datetime, digest: bytes):
         path = self.path(created, digest)
-        result = self.decompressed(path.read_bytes())
+        async with aiofile.async_open(path, mode="rb") as af:
+            compressed = await af.read()
+        result = self.decompressed(compressed)
+
         if (have := self.digest(result)) != digest:
             raise ValueError(f"{path} digest: have {have}, got {digest}")
+
         return result
