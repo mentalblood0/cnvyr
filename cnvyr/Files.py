@@ -6,7 +6,6 @@ import pathlib
 import aiofile
 import lz4.frame
 import xxhash
-from xxhash import xxh3_128_digest
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -43,10 +42,13 @@ class Files:
 
         path = self.path(created, digest)
         path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = pathlib.Path(str(path) + ".temp")
 
         compressed = self.compressed(data)
-        async with aiofile.async_open(path, mode="wb") as af:
+        async with aiofile.async_open(temp_path, mode="wb") as af:
             await af.write(compressed)
+
+        temp_path.rename(path)
 
         return created, digest
 
