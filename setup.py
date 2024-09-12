@@ -28,6 +28,6 @@ if __name__ == "__main__":
         author_email="neceporenkostepan@gmail.com",
         maintainer="mentalblood",
         maintainer_email="neceporenkostepan@gmail.com",
-        install_requires=["psycopg", "aiofile", "asyncstdlib"],
+        install_requires=["psycopg", "aiofile", "asyncstdlib", "xxhash", "lz4"],
         packages=setuptools.find_packages(exclude=["test"]),
     )

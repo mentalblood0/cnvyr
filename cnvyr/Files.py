@@ -1,11 +1,12 @@
 import base64
 import dataclasses
 import datetime
-import hashlib
 import pathlib
-import zlib
 
 import aiofile
+import lz4.frame
+import xxhash
+from xxhash import xxh3_128_digest
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -18,13 +19,13 @@ class Files:
             raise ValueError(f"expect extension starting with '.', got {self.extension}")
 
     def digest(self, data: bytes):
-        return hashlib.sha512(data).digest()
+        return xxhash.xxh3_128_digest(data)
 
     def compressed(self, data: bytes):
-        return zlib.compress(data, level=zlib.Z_BEST_COMPRESSION)
+        return lz4.frame.compress(data, compression_level=16)
 
     def decompressed(self, data: bytes):
-        return zlib.decompress(data)
+        return lz4.frame.decompress(data)
 
     def path(self, created: datetime.datetime, digest: bytes):
         return (
