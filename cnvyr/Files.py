@@ -35,7 +35,7 @@ class Files:
             / f"{created.day:02}"
             / f"{created.hour:02}"
             / (f"{created.minute:02}_{created.second:02}_" + base64.b64encode(digest.rstrip(b"=")).decode("ascii"))
-        ).with_suffix(self.extension + ".gz")
+        ).with_suffix(self.extension + ".lz4")
 
     async def save(self, data: bytes):
         created = datetime.datetime.now(datetime.UTC)
